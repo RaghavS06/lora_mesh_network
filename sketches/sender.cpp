@@ -15,7 +15,7 @@
 #define LORA_FREQUENCY 915E6 // For North America (915 MHz)
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   while (!Serial); // Wait for serial port to connect. Needed for native USB port only
 
   Serial.println("LoRa Sender");
