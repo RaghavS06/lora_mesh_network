@@ -1,98 +1,195 @@
-#include <Arduino.h>
-#include <HT_SSD1306Wire.h> // Heltec's specific OLED library
+/*
+ * HelTec Automation(TM) WIFI_LoRa_32 factory test code, witch includ
+ * follow functions:
+ * 
+ * - Basic OLED function test;
+ * 
+ * - Basic serial port test(in baud rate 115200);
+ * 
+ * - LED blink test;
+ * 
+ * - WIFI connect and scan test;
+ * 
+ *
+ * by Aaron.Lee from HelTec AutoMation, ChengDu, China
+ * 成都惠利特自动化科技有限公司
+ * https://heltec.org
+ *
+ * this project also realess in GitHub:
+ * https://github.com/HelTecAutomation/Heltec_ESP32
+*/
 
-// --- Heltec V3.2 Official OLED Pin & Config Definitions ---
-// These are pre-defined macros in the Heltec environment.
-// SDA_OLED (GPIO 17)
-// SCL_OLED (GPIO 18)
-// RST_OLED (GPIO 21) - If your board has an explicit reset pin for the OLED.
+#include "Arduino.h"
+#include "WiFi.h"
+#include "images.h"
+#include <Wire.h>  
+#include "HT_SSD1306Wire.h"
 
-// Define SCREEN_WIDTH and SCREEN_HEIGHT explicitly for your sketch
-#define SCREEN_WIDTH 128    // OLED display width in pixels
-#define SCREEN_HEIGHT 64    // OLED display height in pixels
+/********************************* lora  *********************************************/
 
-// Create the display object using HT_SSD1306Wire.
-// Constructor: address, freq (Hz), SDA pin, SCL pin, geometry, reset pin
-static SSD1306Wire display(0x3c, 500000, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED);
+SSD1306Wire  factory_display(0x3c, 500000, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED); // addr , freq , i2c group , resolution , rst
 
-// --- Onboard LED Definition ---
-// For Heltec WiFi LoRa 32 V3.2, the onboard orange LED is GPIO 35.
-// The "redefined" warning for LED_BUILTIN is fine and can be ignored.
-#define LED_BUILTIN 35
 
-// --- Vext Control Functions ---
-// Vext powers external peripherals. The OLED uses it.
-// Vext is HIGH by default, meaning OFF. LOW means ON.
-void VextON(void) {
-  pinMode(Vext, OUTPUT); // Vext is a pre-defined pin in Heltec environment
-  digitalWrite(Vext, LOW); // Set Vext to LOW to turn ON power
+void logo(){
+	factory_display.clear();
+	factory_display.drawXbm(0,5,logo_width,logo_height,(const unsigned char *)logo_bits);
+	factory_display.display();
 }
 
-void VextOFF(void) { // Vext default OFF
-  pinMode(Vext, OUTPUT);
-  digitalWrite(Vext, HIGH); // Set Vext to HIGH to turn OFF power
+void WIFISetUp(void)
+{
+	// Set WiFi to station mode and disconnect from an AP if it was previously connected
+	WiFi.disconnect(true);
+	delay(100);
+	WiFi.mode(WIFI_STA);
+	WiFi.setAutoReconnect(true);
+	WiFi.begin("RVS2","Excellence");//fill in "Your WiFi SSID","Your Password"
+	delay(100);
+
+	byte count = 0;
+	while(WiFi.status() != WL_CONNECTED && count < 10)
+	{
+		count ++;
+		delay(500);
+		factory_display.drawString(0, 0, "Connecting...");
+		factory_display.display();
+	}
+
+	factory_display.clear();
+	if(WiFi.status() == WL_CONNECTED)
+	{
+		factory_display.drawString(0, 0, "Connecting...OK.");
+		factory_display.display();
+//		delay(500);
+	}
+	else
+	{
+		factory_display.clear();
+		factory_display.drawString(0, 0, "Connecting...Failed");
+		factory_display.display();
+		//while(1);
+	}
+	factory_display.drawString(0, 10, "WIFI Setup done");
+	factory_display.display();
+	delay(500);
 }
 
-void setup() {
-  // 1. Initialize Serial Communication
-  Serial.begin(9600);
-  delay(1000); // Give serial monitor time to connect
+void WIFIScan(unsigned int value)
+{
+	unsigned int i;
+    WiFi.mode(WIFI_STA);
 
-  // Optional: Wait explicitly for serial if needed for robust debugging
-  unsigned long startTime = millis();
-  while (!Serial && (millis() - startTime < 4000)) {
-    delay(100);
-  }
+	for(i=0;i<value;i++)
+	{
+		factory_display.drawString(0, 20, "Scan start...");
+		factory_display.display();
 
-  Serial.println("\n--- Heltec V3.2 Project Base Sketch ---");
-  Serial.println("Serial communication initialized.");
+		int n = WiFi.scanNetworks();
+		factory_display.drawString(0, 30, "Scan done");
+		factory_display.display();
+		delay(500);
+		factory_display.clear();
 
-  // 2. Control Vext (Power for OLED/external sensors)
-  Serial.println("Turning Vext ON (powering OLED)...");
-  VextON();
-  delay(150); // Give Vext time to stabilize power for the OLED
+		if (n == 0)
+		{
+			factory_display.clear();
+			factory_display.drawString(0, 0, "no network found");
+			factory_display.display();
+			//while(1);
+		}
+		else
+		{
+			factory_display.drawString(0, 0, (String)n);
+			factory_display.drawString(14, 0, "networks found:");
+			factory_display.display();
+			delay(500);
 
-  // 3. Initialize OLED Display
-  Serial.println("Initializing OLED...");
-  display.init(); // Initialize the display controller
+			for (int i = 0; i < n; ++i) {
+			// Print SSID and RSSI for each network found
+				factory_display.drawString(0, (i+1)*9,(String)(i + 1));
+				factory_display.drawString(6, (i+1)*9, ":");
+				factory_display.drawString(12,(i+1)*9, (String)(WiFi.SSID(i)));
+				factory_display.drawString(90,(i+1)*9, " (");
+				factory_display.drawString(98,(i+1)*9, (String)(WiFi.RSSI(i)));
+				factory_display.drawString(114,(i+1)*9, ")");
+				//factory_display.println((WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?" ":"*");
+				delay(10);
+			}
+		}
+
+		factory_display.display();
+		delay(800);
+		factory_display.clear();
+	}
+}
+
+bool resendflag=false;
+bool deepsleepflag=false;
+bool interrupt_flag = false;
+void interrupt_GPIO0()
+{
+	interrupt_flag = true;
+}
+void interrupt_handle(void)
+{
+	if(interrupt_flag)
+	{
+		interrupt_flag = false;
+		if(digitalRead(0)==0)
+		{
+			deepsleepflag=true;
+		}
+	}
+}
+void VextON(void)
+{
+  pinMode(Vext,OUTPUT);
+  digitalWrite(Vext, LOW);
   
-  // Verify OLED connection using display.connect()
-  if (!display.connect()) { // <-- FIXED: Changed from isConnected() to connect()
-    Serial.println(F("ERROR: OLED not found or not connected!"));
-    pinMode(LED_BUILTIN, OUTPUT); // Ensure LED pin is output
-    while (1) { // Halt and blink LED on error
-      digitalWrite(LED_BUILTIN, HIGH); delay(200);
-      digitalWrite(LED_BUILTIN, LOW); delay(200);
-    }
-  } else {
-    Serial.println(F("SUCCESS: OLED found and initialized."));
-  }
-
-  // 4. Configure & Clear OLED
-  display.clear(); // Clear the display buffer
-  display.display(); // Push clear buffer to screen (make it blank)
-  display.setContrast(255); // Max contrast
-  display.setTextAlignment(TEXT_ALIGN_CENTER); // Center text alignment
-  display.setFont(ArialMT_Plain_16); // Use a known working font from your example
-
-  // 5. Display Initial Message on OLED
-  // Use SCREEN_WIDTH and SCREEN_HEIGHT for centering calculations
-  display.drawString(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 16 / 2, "Node Initializing..."); // <-- FIXED: Added SCREEN_WIDTH/HEIGHT defines
-  display.display();
-  Serial.println("Initial message displayed on OLED.");
-
-  // 6. Initialize Onboard LED (for loop indicator)
-  pinMode(LED_BUILTIN, OUTPUT);
-  Serial.println("Setup complete. Entering loop().");
 }
 
-void loop() {
-  // Blink the LED to confirm loop is running
-  digitalWrite(LED_BUILTIN, HIGH);
-  delay(500);
-  digitalWrite(LED_BUILTIN, LOW);
-  delay(500);
+void VextOFF(void) //Vext default OFF
+{
+  pinMode(Vext,OUTPUT);
+  digitalWrite(Vext, HIGH);
+}
+void setup()
+{
+	Serial.begin(9600);
+	VextON();
+	delay(100);
+	factory_display.init();
+	factory_display.clear();
+	factory_display.display();
+	logo();
+	delay(300);
+	factory_display.clear();
 
-  // You can update the OLED here in loop() if you want dynamic content
-  // Example: display.clear(); display.drawString(0,0,"Loop: " + String(millis()/1000)); display.display();
+	WIFISetUp();
+	WiFi.disconnect(); //
+	WiFi.mode(WIFI_STA);
+	delay(100);
+
+	WIFIScan(1);
+
+	uint64_t chipid=ESP.getEfuseMac();//The chip ID is essentially its MAC address(length: 6 bytes).
+	Serial.printf("ESP32ChipID=%04X",(uint16_t)(chipid>>32));//print High 2 bytes
+	Serial.printf("%08X\n",(uint32_t)chipid);//print Low 4bytes.
+
+	attachInterrupt(0,interrupt_GPIO0,FALLING);
+
+	pinMode(LED ,OUTPUT);
+	digitalWrite(LED, HIGH);  
+}
+
+
+void loop()
+{
+interrupt_handle();
+ if(deepsleepflag)
+ {
+	VextOFF();
+	esp_sleep_enable_timer_wakeup(600*1000*(uint64_t)1000);
+	esp_deep_sleep_start();
+ }
 }
